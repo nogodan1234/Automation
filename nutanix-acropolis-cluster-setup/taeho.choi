@@ -1,0 +1,135 @@
+#!/bin/bash
+
+# Basic shell script to take an existing Nutanix cluster running the Acropolis Hypervisor (AHV) and configure the Image Service, untagged VLAN and 3x virtual machines.
+# All done using the Acropolis CLI (acli)
+
+clear
+
+# set some variables
+# change these to match your environment
+# note that not all options are set here - just the settings most likely to change in a demo environment (in my opinion)
+
+#NFS_SERVER=10.10.10.243
+#NFS_EXPORT=Shared/Software
+
+export CENTOS_IMAGE=https://cloud.centos.org/centos/7/images/CentOS-7-x86_64-GenericCloud-1809.qcow2
+#WINDOWS_ISO=$NFS_EXPORT/Microsoft/Windows_Server_2012_R2_Datacenter_Customer_VLK_2015.05.18/SW_DVD9_Windows_Svr_Std_and_DataCtr_2012_R2_64Bit_English_-4_MLF_X19-82891.ISO
+export PRISM_CENTRAL_BOOT_ISO=http://download.nutanix.com/downloads/kvm/5.10.0.1/5.10.0.1-prism_central-boot.qcow2?Expires=1544690536&Signature=MvXAoEYcu~fnSycK39k5xTMQaO0gcU7qIgHLpl4o6p0TYVPrpZtF2xp0GIvl4tUB0msR0ENcAXw9-cKwmydIhCb4kUcNPAldOZhL76~6~gZecUAINu3l6QmZfdACKECOaRYc7ITVsvEW1rdPWKphS1XP0WBvAR~X0EA9QCKG~swjnQdiAzQNu~HO2hTJ-kslCo6-UvAff4yGjzl615NSDYsft430HbG3I6UOz7oue9KQZFnjeJtI5zNNV7V6GQf7ioBwCSZ3tC113dfuBIYF8SZ66SncoEg0W3TriyJMpkEelCUvr7Z6CPiHICb0f6rcoB2p5-Y2~jPkJ775C9TZOw__&Key-Pair-Id=APKAJTTNCWPEI42QKMSA;
+export PRISM_CENTRAL_HOME_ISO=http://download.nutanix.com/downloads/kvm/5.10.0.1/5.10.0.1-prism_central-home.qcow2?Expires=1544690742&Signature=fwqBhYUe1oekkDb6Mf4uy-wUb75Cvy30CSs6LZ7trFVedmp88z4Yo0fRm~S3DsdFlDHXgQ6Q6bDNvpYGnCa4v518SeCLWKUJVSkDuUlkomS8LgPEiX4-SJjLcB2aQeedXufvW6E-ctUabUXMm8OS2mKLYlC7FM0yUo1cBUJ1qlA4kSWF-TlM8ndsK8tSSO0d3cB4JbcoHxAUgjnXsMpfzFzZfQPN0eYLV44M94nq7f9yBEItE8bQWUOQF-tTRNmxShfKISuyZH9mCD78xgAcPvILcYr3D4lCosKc5sTtFmeYzo-~82ilvJNkUzlktfaQeYtDYXhLs1MqEpiGJRxzGA__&Key-Pair-Id=APKAJTTNCWPEI42QKMSA;
+export PRISM_CENTRAL_DATA_ISO=http://download.nutanix.com/downloads/kvm/5.10.0.1/5.10.0.1-prism_central-data.qcow2?Expires=1544690791&Signature=Pr5LobHEFvHabnRfBhE7p4QIXG1a7~TxOCVnUH03PVjWIXELNbxbVGmQzjDpZHD7HbR30gH4v~0P2U5Ag8GjGzPBdABy3S9IWWM0CuQ0hph7c2WJIOotWkPnPIVCyroDH0O6BSUEQx~sodU3zbA54sggT7PfuM2T79Gw2FjigfYkDKiafD~tNMGoPGzTCKqN-XQSqdosmOn5Fd1VmwBF6emWv6slvNOrN7UbrQlWlQLMS9XkobnTjVjq75moJDYnYmRmzFGNWv6m5MRonM62bHFuI5-QPZ97YdgynyeS~okUR0517wcFxf-Ir2hUV1rCgGrot9NVMlylj2w9jg3NfQ__&Key-Pair-Id=APKAJTTNCWPEI42QKMSA;
+#VIRTIO_ISO=$NFS_EXPORT/Other/VirtIO/0.1.102_ISO/virtio-win-0.1.102.iso;
+
+export DHCP_NET=dhcp
+export DHCP_VLAN=102
+export STATIC_NET=matrix
+export STATIC_VLAN=0
+export IP_CONFIG=10.19.132.1/22
+export IP_POOL_START=10.19.135.56
+export IP_POOL_END=10.19.135.59
+#VLAN_IP_CONFIG=10.10.10.253/24
+#DHCP_START=10.10.10.100
+#DHCP_END=10.10.10.200
+export DOMAIN_NAME=taeho.local
+export DNS_SERVER=10.19.128.10
+export WINDOWS_DISK_SIZE=40G
+export CENTOS_DISK_SIZE=10G
+export PRISM_CENTRAL_CPUS=8
+export PRISM_CENTRAL_RAM=24G
+export PRISM_CENTRAL_IP=10.19.135.56
+export PE_DATA_SVC_IP=10.19.135.59
+export ACS_CENTOS=http://download.nutanix.com/karbon/0.8/acs-centos7.qcow2
+export ACS_UBUNTU=http://download.nutanix.com/karbon/0.8/acs-ubuntu1604.qcow2
+
+echo
+
+# create images
+# sleep for 3 seconds between each image creation process
+# this is because the dev platform is based on OS X - NFS seems to disconnect clients if one session finishes then another immediately starts
+
+echo "Creating ACS images ..."
+acli image.create "acs-centos7" image_type=kDiskImage source_url=$ACS_CENTOS container=Images;
+sleep 3
+acli image.create "acs-ubuntu17" image_type=kDiskImage source_url=$ACS_UBUNTU container=Images;
+sleep 3
+echo "Creating Prism Central Boot image ..."
+acli image.create "PC_5.10.1_Boot" image_type=kDiskImage source_url=$PRISM_CENTRAL_BOOT_ISO container=Images;
+sleep 3
+acli image.create "PC_5.10.1_home" image_type=kDiskImage source_url=$PRISM_CENTRAL_HOME_ISO container=Images;
+sleep 3
+echo "Creating Prism Central Data image (this may take a while) ..."
+acli image.create "PC_5.10.1_Data" image_type=kDiskImage source_url=$PRISM_CENTRAL_DATA_ISO container=Images;
+sleep 3
+echo "Creating Windows 2012 R2 ISO_image "
+acli image.create "Windows 2012 R2" image_type=kIsoImage source_url="http://apac-file.sre-labs.nutanix.com/Repo/Mounts/NSS/Win2012_R2-3319595.iso" container=Images;
+sleep 3
+echo "Creating Centos7 Disk iamge "
+acli image.create "Centos7" image_type=kDiskImage source_url=$CENTOS_IMAGE container=Images;
+sleep 3
+echo "Creating VirtIO Driver image ..."
+acli image.create "VirtIO" image_type=kIsoImage source_url="http://apac-file.sre-labs.nutanix.com/Repo/Mounts/NSS/virtio-win-0.1.126.iso" container=Images;
+
+echo
+
+# create network
+echo "Creating dhcp network ..."
+acli net.create dhcp vlan=$DHCP_VLAN 
+sleep 3
+echo "Creating Static network"
+acli net.create $STATIC_NET vlan=0 ip_config=$IP_CONFIG 
+echo "Adding DHCP pool ..."
+acli net.add_dhcp_pool $STATIC_NET start=$IP_POOL_START end=$IP_POOL_END;
+echo "Configuring $VLAN_NAME DNS settings ..."
+acli net.update_dhcp_dns $STATIC_NET domains=$DOMAIN_NAME servers=$DNS_SERVER;
+
+echo
+
+# create VMs - Windows 2012
+echo "Creating Windows 2012 R2 VM ..."
+acli vm.create "Windows2012R2" num_vcpus=1 num_cores_per_vcpu=1 memory=8G;
+echo "Attaching CDROM devices ..."
+acli vm.disk_create "Windows2012R2" cdrom=true clone_from_image="Windows 2012 R2";
+acli vm.disk_create "Windows2012R2" cdrom=true clone_from_image="VirtIO";
+echo "Creating system disk ..."
+acli vm.disk_create "Windows2012R2" create_size=$WINDOWS_DISK_SIZE;
+echo "Creating network adapter ..."
+acli vm.nic_create "Windows2012R2" network=$VLAN_NAME;
+echo "Powering on Windows 2012 R2 VM ..."
+acli vm.on "Windows2012R2";
+
+echo
+
+# create VMs - CentOS 7
+echo "Creating CentOS 7 VM ..."
+acli vm.create "CentOS7" num_vcpus=4 num_cores_per_vcpu=1 memory=2G;
+echo "Attaching boot disk device ..."
+acli vm.disk_create "CentOS7" clone_from_image=$CENTOS_IMAGE;
+echo "Creating network adapter ..."
+acli vm.nic_create "CentOS7" network=$DHCP_NET;
+echo "Powering on CentOS 7 VM ..."
+acli vm.on "CentOS7";
+
+echo
+
+# create VMs - Prism Central
+echo "Creating Prism Central VM ..."
+acli vm.create "PC" num_vcpus=$PRISM_CENTRAL_CPUS num_cores_per_vcpu=1 memory=$PRISM_CENTRAL_RAM;
+echo "Attaching Boot & Data disks ..."
+acli vm.disk_create "PC" clone_from_image="PC_5.10.1_Boot";
+acli vm.disk_create "PC" clone_from_image="PC_5.10.1_home";
+acli vm.disk_create "PC" clone_from_image="PC_5.10.1_Data";
+echo "Creating network adapter ..."
+acli vm.nic_create "PC" network=$VLAN_NAME ip=$PRISM_CENTRAL_IP;
+echo "Powering on Prism Central VM ..."
+acli vm.on "PC";
+
+
+#rsh $PRISM_CENTRAL_IP -l nutanix cluster --cluster_function_list="multicluster" -s static_ip_address create
+
+echo
+echo "Finished!"
+echo
+
+#Prism UI passwd reset
+ncli user reset-password user-name="admin" password="SREs4eva!"
+ncli cluster edit-params external-data-services-ip-address=$PE_DATA_SVC_IP
+ncli cluster add-public-key name="pub-key"
